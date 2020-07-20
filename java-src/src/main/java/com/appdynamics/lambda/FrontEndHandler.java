@@ -81,7 +81,7 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 			if (!txn.equals(null)) {
 				HashMap<String, String> db_props = new HashMap<>();							
 				db_props.put("VENDOR", System.getenv("ORDERS_TABLE_NAME") + " DynamoDB");
-				db_exit_call = txn.createExitCall("AMAZON_WEB_SERVICES", db_props);
+				db_exit_call = txn.createExitCall("AMAZON WEB SERVICES", db_props);
 				db_exit_call.start();
 			}
 			
