@@ -8,6 +8,7 @@ provider:
   region: us-west-2
   environment:
     ORDERS_TABLE_NAME: ${self:service}-${opt:state, self:provider.stage}
+    AWS_REGION_STR: ${opt:region, self:provider.region}
     APPDYNAMICS_ACCOUNT_NAME: ""
     APPDYNAMICS_APPLICATION_NAME: ""
     APPDYNAMICS_CONTROLLER_HOST: ""

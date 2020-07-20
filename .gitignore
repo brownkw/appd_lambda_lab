@@ -1,3 +1,5 @@
 
 java-src/.factorypath
 .vscode/settings.json
+.DS_Store
+java-src/.DS_Store

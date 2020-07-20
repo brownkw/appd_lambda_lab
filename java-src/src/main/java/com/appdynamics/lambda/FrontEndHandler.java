@@ -24,48 +24,117 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.javafaker.Faker;
 
 // TODO: Add in AppDynamics imports
+import com.appdynamics.serverless.tracers.aws.api.AppDynamics;
+import com.appdynamics.serverless.tracers.aws.api.Tracer;
+import com.appdynamics.serverless.tracers.aws.api.Transaction;
+import com.appdynamics.serverless.tracers.dependencies.com.google.gson.Gson;
+import com.appdynamics.serverless.tracers.aws.api.ExitCall;
 
 public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiGatewayResponse> {
 
 	private static final Logger LOG = LogManager.getLogger(FrontEndHandler.class);
 	private static final Map<String, Object> CONTROLLER_INFO = SecretsManager.getSecret();
 
+	// TODO: Add variables for the tracer and transaction
+	Tracer tracer = null;
+    Transaction txn = null;
+
 	@Override
 	public ApiGatewayResponse handleRequest(Map<String, Object> input, Context context) {
 		LOG.info("received: {}", input);
 
-		// TODO: Add in code to build tracer.
+		ApiGatewayResponse response;
 
+		// TODO: Add in code to build tracer and start transaction.
+		String correlationHeader = "";
 		String path = input.get("path").toString();
+        String bt_name = path;
+
+		AppDynamics.Config.Builder configBuilder = new AppDynamics.Config.Builder();
+		configBuilder.accountName(FrontEndHandler.CONTROLLER_INFO.get("aws-sandbox-controller-key").toString())
+			.controllerAccessKey(FrontEndHandler.CONTROLLER_INFO.get("aws-sandbox-controller-account").toString())
+			.lambdaContext(context);
+
+        tracer = AppDynamics.getTracer(configBuilder.build());        
+
+        if (!input.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).equals(null)) {
+            correlationHeader = input.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).toString();
+        } else {
+			ObjectMapper m = new ObjectMapper();			
+			Map<String, Object> headers = m.convertValue(input.get("headers"), new TypeReference<Map<String, Object>>() {});
+            if (!headers.equals(null) && headers.containsKey(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY)) {
+                correlationHeader = headers.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).toString();
+            }
+		}
+		
+		txn = tracer.createTransaction(correlationHeader);
+        txn.start();
+
 		Faker faker = new Faker();
 
 		if (path.equals("/orders/submit")) {
 			CommerceOrder order = new CommerceOrder.Builder().random().build();
 
-			// TODO: Add exit call
-
+			// TODO: Add code for exit call to DynamoDB
+			
+			ExitCall db_exit_call = null;
+			if (!txn.equals(null)) {
+				HashMap<String, String> db_props = new HashMap<>();							
+				db_props.put("VENDOR", System.getenv("ORDERS_TABLE_NAME") + " DynamoDB");
+				db_exit_call = txn.createExitCall("AMAZON_WEB_SERVICES", db_props);
+				db_exit_call.start();
+			}
+			
+			
 			try {
 				order.save();
 				Map<String, Object> order_map = new ObjectMapper().convertValue(order,
 						new TypeReference<Map<String, Object>>() {
 						});
 				Response responseBody = new Response("OrderCreated", order_map);
-				return ApiGatewayResponse.builder().setStatusCode(201).setObjectBody(responseBody)
+				response = ApiGatewayResponse.builder().setStatusCode(201).setObjectBody(responseBody)
 						.setHeaders(Collections.singletonMap("X-Powered-By", faker.gameOfThrones().character()))
 						.build();
 			} catch (IOException e) {
+
+				// TODO: Add code to report error for exit call to DynamoDB.
+				if (!db_exit_call.equals(null)) {
+					db_exit_call.reportError(e);
+				}
+
 				Map<String, Object> error_map = new HashMap<String, Object>();
 				error_map.put("error_msg", e.getMessage());
 				Response responseBody = new Response("Error", error_map);
-				return ApiGatewayResponse.builder().setStatusCode(500).setObjectBody(responseBody)
+				response = ApiGatewayResponse.builder().setStatusCode(500).setObjectBody(responseBody)
 						.setHeaders(Collections.singletonMap("X-Powered-By", faker.gameOfThrones().character()))
 						.build();
 			}
-		} else if (path.equals("/orders/recent")) {
+
+			// TODO: Add code to end exit call to DynamoDB.
+			if (!db_exit_call.equals(null)) {
+				db_exit_call.stop();
+			}
+
+		} else if (path.equals("/orders/recent")) {						
 
 			String lambda_to_call = context.getFunctionName().replace("lambda-1", "lambda-2");
-			AWSLambda lambdaClient = AWSLambdaClientBuilder.standard().withRegion("us-west-2").build();
-			InvokeRequest request = new InvokeRequest().withFunctionName(lambda_to_call).withPayload("{}");
+
+			// TODO: Add code for exit call to Lambda
+			HashMap<String, String> payload = new HashMap<>();
+			ExitCall lambda_exit_call = null;
+
+			if (txn != null) {
+				HashMap<String, String> lambda_props = new HashMap<>();
+				lambda_props.put("DESTINATION", lambda_to_call);
+				lambda_props.put("DESTINATION_TYPE", "LAMBDA");
+				lambda_exit_call = txn.createExitCall("CUSTOM", lambda_props);
+				String outgoingHeader = lambda_exit_call.getCorrelationHeader();
+				lambda_exit_call.start();
+				payload.put(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY, outgoingHeader);
+			}
+
+			AWSLambda lambdaClient = AWSLambdaClientBuilder.standard().withRegion(System.getenv("AWS_REGION_STR")).build();
+			InvokeRequest request = new InvokeRequest().withFunctionName(lambda_to_call).withPayload(new Gson().toJson(payload));			
 
 			try {
 				InvokeResult result = lambdaClient.invoke(request);
@@ -76,21 +145,31 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 				resp_map.put("orders", results);
 
 				Response responseBody = new Response("Success", resp_map);
-				return ApiGatewayResponse.builder().setStatusCode(200).setObjectBody(responseBody)
+				response = ApiGatewayResponse.builder().setStatusCode(200).setObjectBody(responseBody)
 						.setHeaders(Collections.singletonMap("X-Powered-By", faker.gameOfThrones().character()))
 						.build();
 			} catch (Throwable e) {
+
+				// TODO: Add code to report error for exit call to Lambda
+				if (!lambda_exit_call.equals(null)) {
+					lambda_exit_call.reportError(e);
+				}
+
 				Map<String, Object> error_map = new HashMap<String, Object>();
 				error_map.put("error_msg", e.getMessage());
 				Response responseBody = new Response("Error", error_map);
-				return ApiGatewayResponse.builder().setStatusCode(500).setObjectBody(responseBody)
+				response = ApiGatewayResponse.builder().setStatusCode(500).setObjectBody(responseBody)
 						.setHeaders(Collections.singletonMap("X-Powered-By", faker.gameOfThrones().character()))
 						.build();
 			}
 
-		} else {
+			// TODO: Add code to end exit call to Lambda
+			if (!lambda_exit_call.equals(null)) {
+				lambda_exit_call.stop();
+			}
 
-			// Catch-all
+		} else {
+			
 			ThreadLocalRandom rnd = ThreadLocalRandom.current();
 			try {
 				Thread.sleep(rnd.nextLong(150, 500));
@@ -99,9 +178,16 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 			}
 
 			Response responseBody = new Response("Success", input);
-			return ApiGatewayResponse.builder().setStatusCode(200).setObjectBody(responseBody)
+			response = ApiGatewayResponse.builder().setStatusCode(200).setObjectBody(responseBody)
 					.setHeaders(Collections.singletonMap("X-Powered-By", faker.gameOfThrones().character())).build();
 		}
+
+		// TODO: Add code to end transaction
+		if (!txn.equals(null)) {
+			txn.stop();
+		}
+
+		return response;
 
 	}
 
