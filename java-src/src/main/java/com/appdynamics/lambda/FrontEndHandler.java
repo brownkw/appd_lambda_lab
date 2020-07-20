@@ -21,6 +21,7 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.appdynamics.lambda.dal.CommerceOrder;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.javafaker.App;
 import com.github.javafaker.Faker;
 
 // TODO: Add in AppDynamics imports
@@ -37,7 +38,7 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 
 	// TODO: Add variables for the tracer and transaction
 	Tracer tracer = null;
-    Transaction txn = null;
+	Transaction txn = null;
 
 	@Override
 	public ApiGatewayResponse handleRequest(Map<String, Object> input, Context context) {
@@ -45,30 +46,37 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 
 		ApiGatewayResponse response;
 
-		// TODO: Add in code to build tracer and start transaction.
-		String correlationHeader = "";
 		String path = input.get("path").toString();
-        String bt_name = path;
 
-		AppDynamics.Config.Builder configBuilder = new AppDynamics.Config.Builder();
-		configBuilder.accountName(FrontEndHandler.CONTROLLER_INFO.get("aws-sandbox-controller-key").toString())
-			.controllerAccessKey(FrontEndHandler.CONTROLLER_INFO.get("aws-sandbox-controller-account").toString())
-			.lambdaContext(context);
+		// TODO: Add in code to build tracer and start transaction.
+		if (AppDVariablesPresent()) {
+			String correlationHeader = "";			
+			String bt_name = path;
 
-        tracer = AppDynamics.getTracer(configBuilder.build());        
+			AppDynamics.Config.Builder configBuilder = new AppDynamics.Config.Builder();
+			configBuilder.accountName(FrontEndHandler.CONTROLLER_INFO.get("aws-sandbox-controller-key").toString())
+					.controllerAccessKey(
+							FrontEndHandler.CONTROLLER_INFO.get("aws-sandbox-controller-account").toString())
+					.lambdaContext(context);
 
-        if (!input.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).equals(null)) {
-            correlationHeader = input.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).toString();
-        } else {
-			ObjectMapper m = new ObjectMapper();			
-			Map<String, Object> headers = m.convertValue(input.get("headers"), new TypeReference<Map<String, Object>>() {});
-            if (!headers.equals(null) && headers.containsKey(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY)) {
-                correlationHeader = headers.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).toString();
-            }
+			tracer = AppDynamics.getTracer(configBuilder.build());
+
+			if (!input.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).equals(null)) {
+				correlationHeader = input.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).toString();
+			} else {
+				ObjectMapper m = new ObjectMapper();
+				Map<String, Object> headers = m.convertValue(input.get("headers"),
+						new TypeReference<Map<String, Object>>() {
+						});
+				if (!headers.equals(null)
+						&& headers.containsKey(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY)) {
+					correlationHeader = headers.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).toString();
+				}
+			}
+
+			txn = tracer.createTransaction(correlationHeader);
+			txn.start();
 		}
-		
-		txn = tracer.createTransaction(correlationHeader);
-        txn.start();
 
 		Faker faker = new Faker();
 
@@ -76,16 +84,15 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 			CommerceOrder order = new CommerceOrder.Builder().random().build();
 
 			// TODO: Add code for exit call to DynamoDB
-			
+
 			ExitCall db_exit_call = null;
 			if (!txn.equals(null)) {
-				HashMap<String, String> db_props = new HashMap<>();							
+				HashMap<String, String> db_props = new HashMap<>();
 				db_props.put("VENDOR", System.getenv("ORDERS_TABLE_NAME") + " DynamoDB");
 				db_exit_call = txn.createExitCall("AMAZON WEB SERVICES", db_props);
 				db_exit_call.start();
 			}
-			
-			
+
 			try {
 				order.save();
 				Map<String, Object> order_map = new ObjectMapper().convertValue(order,
@@ -115,7 +122,7 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 				db_exit_call.stop();
 			}
 
-		} else if (path.equals("/orders/recent")) {						
+		} else if (path.equals("/orders/recent")) {
 
 			String lambda_to_call = context.getFunctionName().replace("lambda-1", "lambda-2");
 
@@ -133,14 +140,17 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 				payload.put(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY, outgoingHeader);
 			}
 
-			AWSLambda lambdaClient = AWSLambdaClientBuilder.standard().withRegion(System.getenv("AWS_REGION_STR")).build();
-			InvokeRequest request = new InvokeRequest().withFunctionName(lambda_to_call).withPayload(new Gson().toJson(payload));			
+			AWSLambda lambdaClient = AWSLambdaClientBuilder.standard().withRegion(System.getenv("AWS_REGION_STR"))
+					.build();
+			InvokeRequest request = new InvokeRequest().withFunctionName(lambda_to_call)
+					.withPayload(new Gson().toJson(payload));
 
 			try {
 				InvokeResult result = lambdaClient.invoke(request);
 				ByteBuffer payload_buf = result.getPayload();
 				String str = StandardCharsets.UTF_8.decode(payload_buf).toString();
-				List<Object> results = new ObjectMapper().readValue(str, new TypeReference<List<Object>>() {});
+				List<Object> results = new ObjectMapper().readValue(str, new TypeReference<List<Object>>() {
+				});
 				Map<String, Object> resp_map = new HashMap<String, Object>();
 				resp_map.put("orders", results);
 
@@ -169,7 +179,7 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 			}
 
 		} else {
-			
+
 			ThreadLocalRandom rnd = ThreadLocalRandom.current();
 			try {
 				Thread.sleep(rnd.nextLong(150, 500));
@@ -189,6 +199,17 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 
 		return response;
 
+	}
+
+	private boolean AppDVariablesPresent() {
+		return !IsNullOrEmpty(System.getenv("APPDYNAMICS_ACCOUNT_NAME"))
+				&& !IsNullOrEmpty(System.getenv("APPDYNAMICS_APPLICATION_NAME"))
+				&& !IsNullOrEmpty(System.getenv("APPDYNAMICS_CONTROLLER_HOST"))
+				&& !IsNullOrEmpty(System.getenv("APPDYNAMICS_SERVERLESS_API_ENDPOINT"));
+	}
+
+	private boolean IsNullOrEmpty(String str) {
+		return str == null || str.isEmpty();
 	}
 
 }

@@ -106,4 +106,15 @@ public class BackEndHandler implements RequestStreamHandler {
 
     }
 
+    private boolean AppDVariablesPresent() {
+		return !IsNullOrEmpty(System.getenv("APPDYNAMICS_ACCOUNT_NAME"))
+				&& !IsNullOrEmpty(System.getenv("APPDYNAMICS_APPLICATION_NAME"))
+				&& !IsNullOrEmpty(System.getenv("APPDYNAMICS_CONTROLLER_HOST"))
+				&& !IsNullOrEmpty(System.getenv("APPDYNAMICS_SERVERLESS_API_ENDPOINT"));
+	}
+
+	private boolean IsNullOrEmpty(String str) {
+		return str == null || str.isEmpty();
+	}
+
 }
