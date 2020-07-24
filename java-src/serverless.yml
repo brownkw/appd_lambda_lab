@@ -9,12 +9,12 @@ provider:
   environment:
     ORDERS_TABLE_NAME: ${self:service}-${opt:state, self:provider.stage}
     AWS_REGION_STR: ${opt:region, self:provider.region}
-    APPDYNAMICS_ACCOUNT_NAME: ""
-    APPDYNAMICS_APPLICATION_NAME: ""
-    APPDYNAMICS_CONTROLLER_HOST: ""
-    APPDYNAMICS_SERVERLESS_API_ENDPOINT: ""
+    APPDYNAMICS_ACCOUNT_NAME: "aws-sandbox"
+    APPDYNAMICS_APPLICATION_NAME: "WayneLambdaTest"
+    APPDYNAMICS_CONTROLLER_HOST: "aws-sandbox.saas.appdynamics.com"
+    APPDYNAMICS_SERVERLESS_API_ENDPOINT: "https://pdx-sls-agent-api.saas.appdynamics.com"
     APPDYNAMICS_CONTROLLER_PORT: 443
-    APPDYNAMICS_LOG_LEVEL: ""
+    APPDYNAMICS_LOG_LEVEL: "DEBUG"
 
   iamRoleStatements:
     - Effect: Allow
@@ -52,13 +52,17 @@ resources:
 functions:
   lambda-1:
     handler: com.appdynamics.lambda.FrontEndHandler
-    timeout: 30
-    memorySize: 256
+    timeout: 900
+    memorySize: 512
+    environment:
+      APPDYNAMICS_TIER_NAME: ${self:service}-lambda-1
     events:
       - http:
           path: /{proxy+}
           method: any  
   lambda-2:
     handler: com.appdynamics.lambda.BackEndHandler
-    timeout: 30
-    memorySize: 256
+    timeout: 900
+    memorySize: 512
+    environment:
+      APPDYNAMICS_TIER_NAME: ${self:service}-lambda-2

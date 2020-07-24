@@ -50,26 +50,29 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 
 		// TODO: Add in code to build tracer and start transaction.
 		if (AppDVariablesPresent()) {
-			String correlationHeader = "";			
+			String correlationHeader = "";
 			String bt_name = path;
 
 			AppDynamics.Config.Builder configBuilder = new AppDynamics.Config.Builder();
-			configBuilder.accountName(FrontEndHandler.CONTROLLER_INFO.get("aws-sandbox-controller-key").toString())
+			configBuilder.accountName(FrontEndHandler.CONTROLLER_INFO.get("aws-sandbox-controller-account").toString())
 					.controllerAccessKey(
-							FrontEndHandler.CONTROLLER_INFO.get("aws-sandbox-controller-account").toString())
+							FrontEndHandler.CONTROLLER_INFO.get("aws-sandbox-controller-key").toString())
+					.applicationName(System.getenv("APPDYNAMICS_APPLICATION_NAME"))
+					.controllerHost(System.getenv("APPDYNAMICS_CONTROLLER_HOST"))
+					.controllerPort(Integer.parseInt(System.getenv("APPDYNAMICS_CONTROLLER_PORT")))
+					.tierName(System.getenv("APPDYNAMICS_TIER_NAME"))
 					.lambdaContext(context);
 
 			tracer = AppDynamics.getTracer(configBuilder.build());
 
-			if (!input.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).equals(null)) {
+			if (input.containsKey(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY)) {
 				correlationHeader = input.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).toString();
 			} else {
 				ObjectMapper m = new ObjectMapper();
 				Map<String, Object> headers = m.convertValue(input.get("headers"),
 						new TypeReference<Map<String, Object>>() {
 						});
-				if (!headers.equals(null)
-						&& headers.containsKey(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY)) {
+				if (headers != null && headers.containsKey(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY)) {
 					correlationHeader = headers.get(Tracer.APPDYNAMICS_TRANSACTION_CORRELATION_HEADER_KEY).toString();
 				}
 			}
@@ -86,10 +89,11 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 			// TODO: Add code for exit call to DynamoDB
 
 			ExitCall db_exit_call = null;
-			if (!txn.equals(null)) {
+			if (txn != null) {
 				HashMap<String, String> db_props = new HashMap<>();
-				db_props.put("VENDOR", System.getenv("ORDERS_TABLE_NAME") + " DynamoDB");
-				db_exit_call = txn.createExitCall("AMAZON WEB SERVICES", db_props);
+				db_props.put("DESTINATION", System.getenv("ORDERS_TABLE_NAME") + " DynamoDB");
+				db_props.put("DESTINATION_TYPE", "Amazon Web Services");
+				db_exit_call = txn.createExitCall("CUSTOM", db_props);
 				db_exit_call.start();
 			}
 
@@ -105,7 +109,7 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 			} catch (IOException e) {
 
 				// TODO: Add code to report error for exit call to DynamoDB.
-				if (!db_exit_call.equals(null)) {
+				if (db_exit_call != null) {
 					db_exit_call.reportError(e);
 				}
 
@@ -118,11 +122,11 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 			}
 
 			// TODO: Add code to end exit call to DynamoDB.
-			if (!db_exit_call.equals(null)) {
+			if (db_exit_call != null) {
 				db_exit_call.stop();
 			}
 
-		} else if (path.equals("/orders/recent")) {
+		} else if (path.equals("/orders/random")) {
 
 			String lambda_to_call = context.getFunctionName().replace("lambda-1", "lambda-2");
 
@@ -161,7 +165,7 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 			} catch (Throwable e) {
 
 				// TODO: Add code to report error for exit call to Lambda
-				if (!lambda_exit_call.equals(null)) {
+				if (lambda_exit_call != null) {
 					lambda_exit_call.reportError(e);
 				}
 
@@ -174,7 +178,7 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 			}
 
 			// TODO: Add code to end exit call to Lambda
-			if (!lambda_exit_call.equals(null)) {
+			if (lambda_exit_call != null) {
 				lambda_exit_call.stop();
 			}
 
@@ -193,7 +197,7 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 		}
 
 		// TODO: Add code to end transaction
-		if (!txn.equals(null)) {
+		if (txn != null) {
 			txn.stop();
 		}
 

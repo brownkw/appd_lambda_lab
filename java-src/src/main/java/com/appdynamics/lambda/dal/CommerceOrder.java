@@ -153,7 +153,7 @@ public class CommerceOrder {
 
     public List<CommerceOrder> recentOrders() throws IOException {
         DynamoDBScanExpression scanExp = new DynamoDBScanExpression();
-        scanExp.setLimit(10);        
+        scanExp.setLimit(1);        
         List<CommerceOrder> results = this.mapper.scan(CommerceOrder.class, scanExp);
         return results;
     }
