@@ -1,7 +1,12 @@
 package com.appdynamics.lambda.dal;
 
 import java.io.IOException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.List;
+import java.util.TimeZone;
+import java.util.Calendar;
+import java.util.Date;
 
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBAttribute;
@@ -31,6 +36,7 @@ public class CommerceOrder {
     private String phoneNumber;
     private int numOrderItems;
     private double price;
+    private long expiresAt;
 
     public CommerceOrder() {
         DynamoDBMapperConfig mapperConfig = DynamoDBMapperConfig.builder()
@@ -104,6 +110,15 @@ public class CommerceOrder {
         this.price = price;
     }
 
+    @DynamoDBAttribute(attributeName = "expiresAt")
+    public long getExpiresAt() {
+        return expiresAt;
+    }
+
+    public void setExpiresAt(long expiresAt) {
+        this.expiresAt = expiresAt;
+    }
+
     public static class Builder {
 
         private String company;
@@ -146,6 +161,13 @@ public class CommerceOrder {
             order.phoneNumber = this.phoneNumber;
             order.numOrderItems = this.numOrderItems;
             order.price = this.price;
+            
+            // Set expiry in 2 hours.
+            Date date = new Date(System.currentTimeMillis());
+            Calendar calendar = Calendar.getInstance();
+            calendar.setTime(date);
+            calendar.add(Calendar.HOUR_OF_DAY, 2);              
+            order.expiresAt = calendar.getTimeInMillis() / 1000l;
 
             return order;
         }
@@ -153,7 +175,7 @@ public class CommerceOrder {
 
     public List<CommerceOrder> recentOrders() throws IOException {
         DynamoDBScanExpression scanExp = new DynamoDBScanExpression();
-        scanExp.setLimit(10);        
+        scanExp.setLimit(1);        
         List<CommerceOrder> results = this.mapper.scan(CommerceOrder.class, scanExp);
         return results;
     }
