@@ -64,7 +64,7 @@ public class FrontEndHandler implements RequestHandler<Map<String, Object>, ApiG
 		} else if (path.equals("/orders/recent")) {
 
 			String lambda_to_call = context.getFunctionName().replace("lambda-1", "lambda-2");
-			AWSLambda lambdaClient = AWSLambdaClientBuilder.standard().withRegion("us-west-2").build();
+			AWSLambda lambdaClient = AWSLambdaClientBuilder.standard().withRegion(System.getenv("AWS_REGION_STR")).build();
 			InvokeRequest request = new InvokeRequest().withFunctionName(lambda_to_call).withPayload("{}");
 
 			try {

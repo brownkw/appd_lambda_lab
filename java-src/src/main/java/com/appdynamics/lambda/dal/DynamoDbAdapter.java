@@ -12,7 +12,7 @@ public class DynamoDbAdapter {
     private DynamoDBMapper mapper;
     
     private DynamoDbAdapter() {
-        this.client = AmazonDynamoDBClientBuilder.standard().withRegion("us-west-2").build();
+        this.client = AmazonDynamoDBClientBuilder.standard().withRegion(System.getenv("AWS_REGION_STR")).build();
     }
     
     public static DynamoDbAdapter getInstance() {

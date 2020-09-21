@@ -1,13 +1,21 @@
 service: appd-lambda-java
 
+plugins:
+  - serverless-stack-output
+
+custom: 
+  output:
+    handler: scripts/output.handler
+    file: .build/output.json
+    
 provider:
   name: aws
   runtime: java8
 
-  stage: dev
-  region: us-west-2
+  stage: dev  
   environment:
     ORDERS_TABLE_NAME: ${self:service}-${opt:state, self:provider.stage}
+    AWS_REGION_STR: ${opt:region, self:provider.region}
     APPDYNAMICS_ACCOUNT_NAME: ""
     APPDYNAMICS_APPLICATION_NAME: ""
     APPDYNAMICS_CONTROLLER_HOST: ""

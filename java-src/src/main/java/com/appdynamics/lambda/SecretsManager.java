@@ -25,7 +25,7 @@ public class SecretsManager {
 
     public static final Map<String, Object> getSecret() {
         String secretName = "aws-sandbox/controller-key";
-        String region = "us-west-2";
+        String region = System.getenv("AWS_REGION_STR");
         String secret;
 
         Map<String, Object> retval = null;
